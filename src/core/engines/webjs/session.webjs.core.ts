@@ -41,6 +41,7 @@ import {
 } from '@waha/core/utils/ids';
 import { DistinctAck } from '@waha/core/utils/reactive';
 import { splitAt } from '@waha/helpers';
+import { getFileBuffer } from '@waha/utils/files';
 import { PairingCodeResponse } from '@waha/structures/auth.dto';
 import {
   Channel,
@@ -804,12 +805,114 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     );
   }
 
-  sendImage(request: MessageImageRequest) {
-    throw new AvailableInPlusVersion();
+  @Activity()
+  async sendImage(request: MessageImageRequest) {
+    this.logger.info(
+      {
+        chatId: request.chatId,
+        mimetype: request.file?.mimetype,
+        filename: request.file?.filename,
+        hasCaption: !!request.caption,
+        hasMentions: !!request.mentions?.length,
+        hasReplyTo: !!request.reply_to,
+      },
+      'sendImage: Starting to send image',
+    );
+
+    const buffer = await getFileBuffer(request.file, this.logger);
+    this.logger.debug(
+      {
+        bufferSize: buffer.length,
+        bufferSizeKB: Math.round(buffer.length / 1024),
+      },
+      'sendImage: Got file buffer',
+    );
+
+    const mimetype = request.file.mimetype || 'image/jpeg';
+    const media = new MessageMedia(
+      mimetype,
+      buffer.toString('base64'),
+      request.file.filename,
+    );
+    this.logger.debug(
+      {
+        mimetype,
+        filename: request.file.filename,
+        base64Length: media.data.length,
+      },
+      'sendImage: Created MessageMedia object',
+    );
+
+    const options = {
+      ...this.getMessageOptions(request),
+      caption: request.caption,
+    };
+    this.logger.debug({ options }, 'sendImage: Got message options');
+
+    const chatId = this.ensureSuffix(request.chatId);
+    this.logger.info({ chatId }, 'sendImage: Sending message to WhatsApp');
+
+    const result = await this.whatsapp.sendMessage(chatId, media, options);
+    this.logger.info(
+      { chatId, messageId: result?.id?._serialized },
+      'sendImage: Message sent successfully',
+    );
+
+    return this.toWAMessage(result);
   }
 
-  sendFile(request: MessageFileRequest) {
-    throw new AvailableInPlusVersion();
+  @Activity()
+  async sendFile(request: MessageFileRequest) {
+    this.logger.info(
+      {
+        chatId: request.chatId,
+        mimetype: request.file?.mimetype,
+        filename: request.file?.filename,
+        hasCaption: !!request.caption,
+        hasMentions: !!request.mentions?.length,
+        hasReplyTo: !!request.reply_to,
+      },
+      'sendFile: Starting to send file',
+    );
+
+    const buffer = await getFileBuffer(request.file, this.logger);
+    this.logger.debug(
+      {
+        bufferSize: buffer.length,
+        bufferSizeKB: Math.round(buffer.length / 1024),
+      },
+      'sendFile: Got file buffer',
+    );
+
+    const mimetype = request.file.mimetype || 'application/octet-stream';
+    const filename = request.file.filename || 'document';
+    const media = new MessageMedia(
+      mimetype,
+      buffer.toString('base64'),
+      filename,
+    );
+    this.logger.debug(
+      { mimetype, filename, base64Length: media.data.length },
+      'sendFile: Created MessageMedia object',
+    );
+
+    const options = {
+      ...this.getMessageOptions(request),
+      caption: request.caption,
+      sendMediaAsDocument: true,
+    };
+    this.logger.debug({ options }, 'sendFile: Got message options');
+
+    const chatId = this.ensureSuffix(request.chatId);
+    this.logger.info({ chatId }, 'sendFile: Sending message to WhatsApp');
+
+    const result = await this.whatsapp.sendMessage(chatId, media, options);
+    this.logger.info(
+      { chatId, messageId: result?.id?._serialized },
+      'sendFile: Message sent successfully',
+    );
+
+    return this.toWAMessage(result);
   }
 
   sendVoice(request: MessageVoiceRequest) {
@@ -2144,9 +2247,7 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
   }
 }
 
-export class WEBJSEngineMediaProcessor
-  implements IMediaEngineProcessor<Message>
-{
+export class WEBJSEngineMediaProcessor implements IMediaEngineProcessor<Message> {
   hasMedia(message: Message): boolean {
     if (!message.hasMedia) {
       return false;

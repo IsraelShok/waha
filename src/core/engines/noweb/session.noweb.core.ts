@@ -73,6 +73,7 @@ import { parseMessageIdSerialized } from '@waha/core/utils/ids';
 import { isJidNewsletter, toCusFormat, toJID } from '@waha/core/utils/jids';
 import { DistinctAck } from '@waha/core/utils/reactive';
 import { flipObject, splitAt } from '@waha/helpers';
+import { getFileBuffer } from '@waha/utils/files';
 import { PairingCodeResponse } from '@waha/structures/auth.dto';
 import { CallData } from '@waha/structures/calls.dto';
 import {
@@ -1010,12 +1011,123 @@ export class WhatsappSessionNoWebCore extends WhatsappSession {
     return await this.sock.sendMessage(request.chatId, message, options);
   }
 
-  sendImage(request: MessageImageRequest) {
-    throw new AvailableInPlusVersion();
+  @Activity()
+  async sendImage(request: MessageImageRequest) {
+    this.logger.info(
+      {
+        chatId: request.chatId,
+        mimetype: request.file?.mimetype,
+        filename: request.file?.filename,
+        hasCaption: !!request.caption,
+        hasMentions: !!request.mentions?.length,
+        hasReplyTo: !!request.reply_to,
+      },
+      'sendImage: Starting to send image',
+    );
+
+    const chatId = toJID(this.ensureSuffix(request.chatId));
+    this.logger.debug(
+      { chatId, originalChatId: request.chatId },
+      'sendImage: Resolved chatId',
+    );
+
+    const buffer = await getFileBuffer(request.file, this.logger);
+    this.logger.debug(
+      {
+        bufferSize: buffer.length,
+        bufferSizeKB: Math.round(buffer.length / 1024),
+      },
+      'sendImage: Got file buffer',
+    );
+
+    const mimetype = request.file.mimetype || 'image/jpeg';
+    const message = {
+      image: buffer,
+      caption: request.caption,
+      mimetype: mimetype,
+      mentions: request.mentions?.map(toJID),
+    };
+    this.logger.debug(
+      {
+        mimetype,
+        hasCaption: !!message.caption,
+        mentionsCount: message.mentions?.length,
+      },
+      'sendImage: Built message object',
+    );
+
+    const options = await this.getMessageOptions(request);
+    this.logger.debug({ options }, 'sendImage: Got message options');
+
+    this.logger.info({ chatId }, 'sendImage: Sending message to WhatsApp');
+    const result = await this.sock.sendMessage(chatId, message, options);
+    this.logger.info(
+      { chatId, messageId: result?.key?.id },
+      'sendImage: Message sent successfully',
+    );
+
+    return this.toWAMessage(result);
   }
 
-  sendFile(request: MessageFileRequest) {
-    throw new AvailableInPlusVersion();
+  @Activity()
+  async sendFile(request: MessageFileRequest) {
+    this.logger.info(
+      {
+        chatId: request.chatId,
+        mimetype: request.file?.mimetype,
+        filename: request.file?.filename,
+        hasCaption: !!request.caption,
+        hasMentions: !!request.mentions?.length,
+        hasReplyTo: !!request.reply_to,
+      },
+      'sendFile: Starting to send file',
+    );
+
+    const chatId = toJID(this.ensureSuffix(request.chatId));
+    this.logger.debug(
+      { chatId, originalChatId: request.chatId },
+      'sendFile: Resolved chatId',
+    );
+
+    const buffer = await getFileBuffer(request.file, this.logger);
+    this.logger.debug(
+      {
+        bufferSize: buffer.length,
+        bufferSizeKB: Math.round(buffer.length / 1024),
+      },
+      'sendFile: Got file buffer',
+    );
+
+    const mimetype = request.file.mimetype || 'application/octet-stream';
+    const filename = request.file.filename || 'document';
+    const message = {
+      document: buffer,
+      fileName: filename,
+      caption: request.caption,
+      mimetype: mimetype,
+      mentions: request.mentions?.map(toJID),
+    };
+    this.logger.debug(
+      {
+        mimetype,
+        filename,
+        hasCaption: !!message.caption,
+        mentionsCount: message.mentions?.length,
+      },
+      'sendFile: Built message object',
+    );
+
+    const options = await this.getMessageOptions(request);
+    this.logger.debug({ options }, 'sendFile: Got message options');
+
+    this.logger.info({ chatId }, 'sendFile: Sending message to WhatsApp');
+    const result = await this.sock.sendMessage(chatId, message, options);
+    this.logger.info(
+      { chatId, messageId: result?.key?.id },
+      'sendFile: Message sent successfully',
+    );
+
+    return this.toWAMessage(result);
   }
 
   sendVoice(request: MessageVoiceRequest) {

@@ -187,6 +187,7 @@ import { GoToJSWAProto } from '@waha/core/engines/gows/waproto';
 import { extractWALocation } from '@waha/core/engines/waproto/locaiton';
 import { extractVCards } from '@waha/core/engines/waproto/vcards';
 import { Activity } from '@waha/core/abc/activity';
+import { getFileBuffer } from '@waha/utils/files';
 import { TmpDir } from '@waha/utils/tmpdir';
 import * as path from 'path';
 import MessageServiceClient = messages.MessageServiceClient;
@@ -1116,12 +1117,143 @@ export class WhatsappSessionGoWSCore extends WhatsappSession {
     throw new NotImplementedByEngineError();
   }
 
-  sendImage(request: MessageImageRequest) {
-    throw new AvailableInPlusVersion();
+  @Activity()
+  async sendImage(request: MessageImageRequest) {
+    this.logger.info(
+      {
+        chatId: request.chatId,
+        mimetype: request.file?.mimetype,
+        filename: request.file?.filename,
+        hasCaption: !!request.caption,
+        hasMentions: !!request.mentions?.length,
+        hasReplyTo: !!request.reply_to,
+      },
+      'sendImage: Starting to send image',
+    );
+
+    const jid = toJID(this.ensureSuffix(request.chatId));
+    this.logger.debug(
+      { jid, originalChatId: request.chatId },
+      'sendImage: Resolved JID',
+    );
+
+    const buffer = await getFileBuffer(request.file, this.logger);
+    this.logger.debug(
+      {
+        bufferSize: buffer.length,
+        bufferSizeKB: Math.round(buffer.length / 1024),
+      },
+      'sendImage: Got file buffer',
+    );
+
+    const mimetype = request.file.mimetype || 'image/jpeg';
+    const media = new messages.Media({
+      content: new Uint8Array(buffer),
+      type: messages.MediaType.IMAGE,
+      mimetype: mimetype,
+      filename: request.file.filename,
+    });
+    this.logger.debug(
+      { mimetype, filename: request.file.filename, mediaType: 'IMAGE' },
+      'sendImage: Created Media object',
+    );
+
+    const message = new messages.MessageRequest({
+      jid: jid,
+      session: this.session,
+      text: request.caption,
+      media: media,
+      replyTo: getMessageIdFromSerialized(request.reply_to),
+      mentions: request.mentions?.map((mention) => toJID(mention)),
+    });
+    this.logger.debug(
+      {
+        hasCaption: !!request.caption,
+        hasReplyTo: !!request.reply_to,
+        mentionsCount: request.mentions?.length,
+      },
+      'sendImage: Built MessageRequest',
+    );
+
+    this.logger.info({ jid }, 'sendImage: Sending message to WhatsApp');
+    const response = await promisify(this.client.SendMessage)(message);
+    const data = response.toObject();
+    this.logger.info(
+      { jid, messageId: data?.id },
+      'sendImage: Message sent successfully',
+    );
+
+    return this.messageResponse(jid, data);
   }
 
-  sendFile(request: MessageFileRequest) {
-    throw new AvailableInPlusVersion();
+  @Activity()
+  async sendFile(request: MessageFileRequest) {
+    this.logger.info(
+      {
+        chatId: request.chatId,
+        mimetype: request.file?.mimetype,
+        filename: request.file?.filename,
+        hasCaption: !!request.caption,
+        hasMentions: !!request.mentions?.length,
+        hasReplyTo: !!request.reply_to,
+      },
+      'sendFile: Starting to send file',
+    );
+
+    const jid = toJID(this.ensureSuffix(request.chatId));
+    this.logger.debug(
+      { jid, originalChatId: request.chatId },
+      'sendFile: Resolved JID',
+    );
+
+    const buffer = await getFileBuffer(request.file, this.logger);
+    this.logger.debug(
+      {
+        bufferSize: buffer.length,
+        bufferSizeKB: Math.round(buffer.length / 1024),
+      },
+      'sendFile: Got file buffer',
+    );
+
+    const mimetype = request.file.mimetype || 'application/octet-stream';
+    const filename = request.file.filename || 'document';
+    const media = new messages.Media({
+      content: new Uint8Array(buffer),
+      type: messages.MediaType.DOCUMENT,
+      mimetype: mimetype,
+      filename: filename,
+    });
+    this.logger.debug(
+      { mimetype, filename, mediaType: 'DOCUMENT' },
+      'sendFile: Created Media object',
+    );
+
+    const message = new messages.MessageRequest({
+      jid: jid,
+      session: this.session,
+      text: request.caption,
+      media: media,
+      replyTo: getMessageIdFromSerialized(request.reply_to),
+      mentions: request.mentions?.map((mention) => toJID(mention)),
+    });
+    this.logger.debug(
+      {
+        hasCaption: !!request.caption,
+        hasReplyTo: !!request.reply_to,
+        mentionsCount: request.mentions?.length,
+      },
+      'sendFile: Built MessageRequest',
+    );
+
+    this.logger.info({ jid }, 'sendFile: Sending message to WhatsApp');
+    const response = await promisify(this.client.SendMessage)(message);
+    const data = response.toObject();
+    this.logger.info(
+      { jid, messageId: data?.id },
+      'sendFile: Message sent successfully',
+    );
+
+    return this.messageResponse(jid, data);
   }
 
   sendVoice(request: MessageVoiceRequest) {
